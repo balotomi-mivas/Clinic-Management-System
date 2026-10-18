@@ -1,0 +1,53 @@
+                                           List of relations
+ Schema |       Name        | Type  |  Owner   | Persistence | Access method |    Size    | Description 
+--------+-------------------+-------+----------+-------------+---------------+------------+-------------
+ clinic | allergy           | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | appointment       | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | audit_log         | table | postgres | permanent   | heap          | 16 kB      | 
+ clinic | consultation      | table | postgres | permanent   | heap          | 16 kB      | 
+ clinic | department        | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | diagnosis         | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | doctor            | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | drug              | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | icd10_code        | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | invoice           | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | invoice_line      | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | lab_request       | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | lab_test          | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | next_of_kin       | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | patient           | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | payment           | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | prescription      | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | prescription_item | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | specialty         | table | postgres | permanent   | heap          | 8192 bytes | 
+ clinic | staff             | table | postgres | permanent   | heap          | 8192 bytes | 
+(20 rows)
+
+                                                              Table "clinic.appointment"
+     Column     |           Type           | Collation | Nullable |           Default            | Storage  | Compression | Stats target | Description 
+----------------+--------------------------+-----------+----------+------------------------------+----------+-------------+--------------+-------------
+ appointment_id | bigint                   |           | not null | generated always as identity | plain    |             |              | 
+ patient_id     | integer                  |           | not null |                              | plain    |             |              | 
+ doctor_id      | integer                  |           | not null |                              | plain    |             |              | 
+ scheduled_at   | timestamp with time zone |           | not null |                              | plain    |             |              | 
+ slot_minutes   | smallint                 |           | not null | 15                           | plain    |             |              | 
+ status         | character varying(12)    |           | not null | 'BOOKED'::character varying  | extended |             |              | 
+ reason         | character varying(200)   |           |          |                              | extended |             |              | 
+ ends_at        | timestamp with time zone |           | not null |                              | plain    |             |              | 
+ created_at     | timestamp with time zone |           | not null | now()                        | plain    |             |              | 
+Indexes:
+    "appointment_pkey" PRIMARY KEY, btree (appointment_id)
+    "no_double_booking" EXCLUDE USING gist (doctor_id WITH =, tstzrange(scheduled_at, ends_at) WITH &&) WHERE (status::text <> ALL (ARRAY['CANCELLED'::character varying, 'NO_SHOW'::character varying]::text[]))
+Check constraints:
+    "appointment_check" CHECK (ends_at > scheduled_at)
+    "appointment_slot_minutes_check" CHECK (slot_minutes >= 5 AND slot_minutes <= 120)
+    "appointment_status_check" CHECK (status::text = ANY (ARRAY['BOOKED'::character varying, 'CHECKED_IN'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying, 'NO_SHOW'::character varying]::text[]))
+Foreign-key constraints:
+    "appointment_doctor_id_fkey" FOREIGN KEY (doctor_id) REFERENCES doctor(staff_id)
+    "appointment_patient_id_fkey" FOREIGN KEY (patient_id) REFERENCES patient(patient_id)
+Referenced by:
+    TABLE "consultation" CONSTRAINT "consultation_appointment_id_fkey" FOREIGN KEY (appointment_id) REFERENCES appointment(appointment_id)
+Triggers:
+    trg_appointment_end BEFORE INSERT OR UPDATE OF scheduled_at, slot_minutes ON appointment FOR EACH ROW EXECUTE FUNCTION fn_set_appointment_end()
+Access method: heap
+

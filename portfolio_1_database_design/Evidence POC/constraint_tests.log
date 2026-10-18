@@ -1,0 +1,77 @@
+/*
+  LASUTH Clinic Management System
+  Portfolio 1: proof that the integrity rules hold
+  File: 03_constraint_tests.sql
+  Each statement below is meant to FAIL. The error text is the evidence.
+*/
+SET search_path TO clinic;
+SET
+>>> Test 1: book Dr Ogunleye at 09:05 on 21 Sep 2026 while his 09:00 slot (15 min) is live
+INSERT INTO appointment (patient_id, doctor_id, scheduled_at, reason)
+VALUES (2, 1, '2026-09-21 09:05+01', 'Walk in');
+psql:portfolio_1_database_design/03_constraint_tests.sql:11: ERROR:  conflicting key value violates exclusion constraint "no_double_booking"
+DETAIL:  Key (doctor_id, tstzrange(scheduled_at, ends_at))=(1, ["2026-09-21 09:05:00+01","2026-09-21 09:20:00+01")) conflicts with existing key (doctor_id, tstzrange(scheduled_at, ends_at))=(1, ["2026-09-21 09:00:00+01","2026-09-21 09:15:00+01")).
+>>> Test 2: cancelled slot can be reused, so this one SUCCEEDS
+UPDATE appointment SET status = 'CANCELLED' WHERE appointment_id = 3;
+UPDATE 1
+INSERT INTO appointment (patient_id, doctor_id, scheduled_at, reason)
+VALUES (1, 3, '2026-09-22 09:30+01', 'Reuses a cancelled slot') RETURNING appointment_id, status;
+ appointment_id | status 
+----------------+--------
+              5 | BOOKED
+(1 row)
+
+INSERT 0 1
+DELETE FROM appointment WHERE reason = 'Reuses a cancelled slot';
+DELETE 1
+UPDATE appointment SET status = 'COMPLETED' WHERE appointment_id = 3;
+UPDATE 1
+>>> Test 3: drug stock cannot go negative
+UPDATE drug SET stock_qty = stock_qty - 5000 WHERE drug_id = 1;
+psql:portfolio_1_database_design/03_constraint_tests.sql:21: ERROR:  new row for relation "drug" violates check constraint "drug_stock_qty_check"
+DETAIL:  Failing row contains (1, Artemether/Lumefantrine, TABLET, 80/480 mg, 350.00, -3800, 200).
+>>> Test 4: invalid genotype is rejected
+INSERT INTO patient (hospital_no, first_name, last_name, sex, date_of_birth, genotype)
+VALUES ('LASUTH/2026/999999', 'Test', 'Patient', 'F', '1990-01-01', 'XY');
+psql:portfolio_1_database_design/03_constraint_tests.sql:25: ERROR:  new row for relation "patient" violates check constraint "patient_genotype_check"
+DETAIL:  Failing row contains (4, LASUTH/2026/999999, Test, Patient, F, 1990-01-01, null, null, null, null, XY, null, 2026-10-16 05:07:00.64756+01).
+>>> Test 5: a consultation can have only one primary diagnosis
+INSERT INTO diagnosis (consultation_id, icd10_code, is_primary) VALUES (1, 'A01.0', TRUE);
+psql:portfolio_1_database_design/03_constraint_tests.sql:28: ERROR:  duplicate key value violates unique constraint "ux_diagnosis_one_primary"
+DETAIL:  Key (consultation_id)=(1) already exists.
+>>> Test 6: diagnosis must use a known ICD 10 code
+INSERT INTO diagnosis (consultation_id, icd10_code) VALUES (1, 'ZZZ.9');
+psql:portfolio_1_database_design/03_constraint_tests.sql:31: ERROR:  insert or update on table "diagnosis" violates foreign key constraint "diagnosis_icd10_code_fkey"
+DETAIL:  Key (icd10_code)=(ZZZ.9) is not present in table "icd10_code".
+>>> Test 7: a lab result cannot be marked REPORTED without a value
+UPDATE lab_request SET status = 'REPORTED', result_value = NULL WHERE request_id = 1;
+psql:portfolio_1_database_design/03_constraint_tests.sql:34: ERROR:  new row for relation "lab_request" violates check constraint "lab_request_check"
+DETAIL:  Failing row contains (1, 1, 1, 2026-10-16 05:07:00.616523+01, REPORTED, null, null, t, 7, 2026-09-21 10:40:00+01).
+>>> Test 8: audit trail captured the diagnosis inserts
+SELECT audit_id, table_name, record_id, action, new_data->>'icd10_code' AS icd10
+FROM audit_log ORDER BY audit_id;
+ audit_id | table_name | record_id | action | icd10 
+----------+------------+-----------+--------+-------
+        1 | diagnosis  |         1 | INSERT | B50.9
+        2 | diagnosis  |         2 | INSERT | I10
+        3 | diagnosis  |         3 | INSERT | D57.1
+(3 rows)
+
+>>> Test 9: patient history view
+SELECT * FROM v_patient_history ORDER BY visit_date;
+    hospital_no     |  patient_name   | visit_date |   doctor_name    |    specialty    | icd10_code |                 diagnosis                  | is_primary 
+--------------------+-----------------+------------+------------------+-----------------+------------+--------------------------------------------+------------
+ LASUTH/2026/000001 | Bisola Adewale  | 2026-09-21 | Adebayo Ogunleye | Family Medicine | B50.9      | Plasmodium falciparum malaria, unspecified | t
+ LASUTH/2026/000002 | Emeka Nwankwo   | 2026-09-21 | Olumide Bakare   | Cardiology      | I10        | Essential (primary) hypertension           | t
+ LASUTH/2026/000003 | Tobiloba Salami | 2026-09-22 | Chinedu Okafor   | Paediatrics     | D57.1      | Sickle cell disease without crisis         | t
+(3 rows)
+
+>>> Test 10: invoice balances are derived, not stored
+SELECT * FROM v_invoice_balance ORDER BY invoice_id;
+ invoice_id | patient_id | status | total_billed | total_paid | balance 
+------------+------------+--------+--------------+------------+---------
+          1 |          1 | PAID   |      6500.00 |    6500.00 |    0.00
+          2 |          2 | OPEN   |     10000.00 |    5000.00 | 5000.00
+          3 |          3 | OPEN   |      7000.00 |          0 | 7000.00
+(3 rows)
+
