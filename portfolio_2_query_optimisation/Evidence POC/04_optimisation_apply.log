@@ -1,0 +1,76 @@
+/*
+  LASUTH Clinic Management System
+  Portfolio 2: indexes, rewrites and a materialised view
+  File: 04_optimisation.sql
+
+  Each change is tied to a query in 02_workload_queries.sql and to the
+  plan that showed the problem (see evidence/plans_before).
+*/
+SET search_path TO clinic;
+SET
+/* Q1. PostgreSQL does not index foreign keys automatically. The history
+   query had to read every appointment row to find one patient's visits.
+   This index turns that sequential scan into an index lookup. */
+CREATE INDEX IF NOT EXISTS ix_appointment_patient ON appointment (patient_id);
+CREATE INDEX
+/* Q2. Composite index: equality column first, range column second, so a
+   doctor's day is one contiguous slice of the index. The query itself is
+   rewritten in 05_optimised_queries.sql to use a range instead of a cast. */
+CREATE INDEX IF NOT EXISTS ix_appointment_doctor_time ON appointment (doctor_id, scheduled_at);
+CREATE INDEX
+/* Q3. The search applies lower() to the column, so a plain index on
+   last_name cannot be used. An expression index matches the predicate
+   exactly; date of birth is added to narrow 2,500 Okonkwos to one. */
+CREATE INDEX IF NOT EXISTS ix_patient_lower_surname_dob ON patient (lower(last_name), date_of_birth);
+CREATE INDEX
+/* Q4. Under 2 percent of lab requests are outstanding at any time. A
+   partial index holds only those rows, already sorted by request time,
+   so the worklist reads 50 index entries and stops. It stays tiny because
+   rows leave the index as soon as they are reported. */
+CREATE INDEX IF NOT EXISTS ix_lab_request_pending ON lab_request (requested_at) WHERE status = 'REQUESTED';
+CREATE INDEX
+/* Q5. The balance view aggregated every invoice line and payment in the
+   hospital before filtering on one patient. Rewritten with LATERAL so the
+   sums run only for the patient's invoices, supported by two FK indexes. */
+CREATE INDEX IF NOT EXISTS ix_invoice_patient  ON invoice (patient_id);
+CREATE INDEX
+CREATE INDEX IF NOT EXISTS ix_payment_invoice  ON payment (invoice_id);
+CREATE INDEX
+CREATE OR REPLACE VIEW v_invoice_balance AS
+SELECT inv.invoice_id,
+       inv.patient_id,
+       inv.status,
+       l.total                AS total_billed,
+       pm.paid                AS total_paid,
+       l.total - pm.paid      AS balance
+FROM invoice inv
+CROSS JOIN LATERAL (SELECT COALESCE(SUM(amount), 0) AS total FROM invoice_line il WHERE il.invoice_id = inv.invoice_id) l
+CROSS JOIN LATERAL (SELECT COALESCE(SUM(amount), 0) AS paid  FROM payment p      WHERE p.invoice_id  = inv.invoice_id) pm;
+CREATE VIEW
+/* Q6. The monthly report scans and joins hundreds of thousands of rows.
+   Management reads it many times a day but the numbers only need to be
+   current to the previous night, so it is precomputed. The unique index
+   allows REFRESH ... CONCURRENTLY, which does not block readers. */
+CREATE INDEX IF NOT EXISTS ix_consultation_date ON consultation (consulted_at);
+CREATE INDEX
+DROP MATERIALIZED VIEW IF EXISTS mv_monthly_disease_burden;
+psql:04_optimisation.sql:55: NOTICE:  materialized view "mv_monthly_disease_burden" does not exist, skipping
+DROP MATERIALIZED VIEW
+CREATE MATERIALIZED VIEW mv_monthly_disease_burden AS
+SELECT date_trunc('month', c.consulted_at) AS month,
+       dep.name AS department,
+       d.icd10_code,
+       count(*) AS cases
+FROM diagnosis d
+JOIN consultation c ON c.consultation_id = d.consultation_id
+JOIN appointment a  ON a.appointment_id = c.appointment_id
+JOIN staff s        ON s.staff_id = a.doctor_id
+JOIN department dep ON dep.department_id = s.department_id
+GROUP BY 1, 2, 3;
+SELECT 1260
+CREATE UNIQUE INDEX ux_mv_burden ON mv_monthly_disease_burden (month, department, icd10_code);
+CREATE INDEX
+/* Nightly job (pg_cron or SQL Agent equivalent):
+   REFRESH MATERIALIZED VIEW CONCURRENTLY clinic.mv_monthly_disease_burden; */
+ANALYZE;
+ANALYZE

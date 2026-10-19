@@ -1,0 +1,6 @@
+after     Q1  median      0.273 ms  (7 runs)  top node: Sort
+after     Q2  median      0.115 ms  (7 runs)  top node: Nested Loop
+after     Q3  median      0.029 ms  (7 runs)  top node: Index Scan
+after     Q4  median      0.572 ms  (7 runs)  top node: Limit
+after     Q5  median      0.152 ms  (7 runs)  top node: Nested Loop
+after     Q6  median      0.349 ms  (7 runs)  top node: Sort

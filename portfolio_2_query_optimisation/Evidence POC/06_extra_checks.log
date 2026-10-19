@@ -1,0 +1,46 @@
+>>> Check A: Q2 with the new composite index but the original cast. The index can only be used for doctor_id; the date filter is applied row by row.
+SET
+                                                                QUERY PLAN                                                                
+------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on appointment a  (cost=77.39..4621.54 rows=17 width=8) (actual time=1.180..10.432 rows=16 loops=1)
+   Recheck Cond: (doctor_id = 14)
+   Filter: ((scheduled_at)::date = '2026-10-14'::date)
+   Rows Removed by Filter: 3318
+   Heap Blocks: exact=2376
+   Buffers: shared hit=374 read=2017
+   ->  Bitmap Index Scan on ix_appointment_doctor_time  (cost=0.00..77.39 rows=3329 width=0) (actual time=0.441..0.441 rows=3334 loops=1)
+         Index Cond: (doctor_id = 14)
+         Buffers: shared hit=3 read=12
+ Planning:
+   Buffers: shared hit=151
+ Planning Time: 0.401 ms
+ Execution Time: 10.484 ms
+(13 rows)
+
+>>> Check B: size of the partial worklist index against a full index on the same column
+CREATE INDEX
+      indexrelname      |  size   
+------------------------+---------
+ ix_lab_request_pending | 48 kB
+ tmp_full_requested_at  | 1824 kB
+(2 rows)
+
+DROP INDEX
+>>> Check C: cost of the nightly refresh of the materialised view
+Timing is on.
+REFRESH MATERIALIZED VIEW
+Time: 681.413 ms
+Timing is off.
+>>> Check D: all indexes added in 04_optimisation.sql
+         indexrelname         |          relname          |  size   
+------------------------------+---------------------------+---------
+ ix_appointment_doctor_time   | appointment               | 12 MB
+ ix_appointment_patient       | appointment               | 4152 kB
+ ix_consultation_date         | consultation              | 2496 kB
+ ix_invoice_patient           | invoice                   | 3760 kB
+ ix_lab_request_pending       | lab_request               | 48 kB
+ ux_mv_burden                 | mv_monthly_disease_burden | 80 kB
+ ix_patient_lower_surname_dob | patient                   | 1840 kB
+ ix_payment_invoice           | payment                   | 6024 kB
+(8 rows)
+
