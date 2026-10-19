@@ -1,0 +1,73 @@
+Q1: Folder retrieval: full history of one patient at the consulting room
+
+SELECT *
+FROM v_patient_history
+WHERE hospital_no = 'LASUTH/2015/025017'
+ORDER BY visit_date DESC;
+
+Gather Merge  (cost=7802.33..7802.79 rows=4 width=143) (actual time=53.103..54.351 rows=17 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=1387 read=3686
+  ->  Sort  (cost=6802.30..6802.31 rows=2 width=143) (actual time=45.246..45.250 rows=6 loops=3)
+        Sort Key: ((a.scheduled_at)::date) DESC
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=1387 read=3686
+        Worker 0:  Sort Method: quicksort  Memory: 25kB
+        Worker 1:  Sort Method: quicksort  Memory: 27kB
+        ->  Nested Loop Left Join  (cost=6800.31..6802.29 rows=2 width=143) (actual time=45.206..45.232 rows=6 loops=3)
+              Buffers: shared hit=1369 read=3686
+              ->  Nested Loop Left Join  (cost=6800.18..6801.96 rows=2 width=74) (actual time=45.202..45.222 rows=6 loops=3)
+                    Buffers: shared hit=1334 read=3686
+                    ->  Nested Loop  (cost=6799.76..6800.98 rows=2 width=76) (actual time=45.195..45.210 rows=6 loops=3)
+                          Buffers: shared hit=1265 read=3686
+                          ->  Nested Loop  (cost=6799.62..6800.46 rows=2 width=62) (actual time=45.192..45.203 rows=6 loops=3)
+                                Join Filter: (dr.staff_id = s.staff_id)
+                                Buffers: shared hit=1230 read=3686
+                                ->  Merge Join  (cost=6799.48..6800.11 rows=2 width=58) (actual time=45.187..45.193 rows=6 loops=3)
+                                      Merge Cond: (a.doctor_id = dr.staff_id)
+                                      Buffers: shared hit=1195 read=3686
+                                      ->  Sort  (cost=6793.14..6793.14 rows=2 width=52) (actual time=45.168..45.170 rows=6 loops=3)
+                                            Sort Key: a.doctor_id
+                                            Sort Method: quicksort  Memory: 25kB
+                                            Buffers: shared hit=1194 read=3686
+                                            Worker 0:  Sort Method: quicksort  Memory: 25kB
+                                            Worker 1:  Sort Method: quicksort  Memory: 26kB
+                                            ->  Nested Loop  (cost=8.87..6793.13 rows=2 width=52) (actual time=35.818..45.152 rows=6 loops=3)
+                                                  Buffers: shared hit=1184 read=3686
+                                                  ->  Hash Join  (cost=8.44..6791.66 rows=3 width=52) (actual time=35.805..45.134 rows=7 loops=3)
+                                                        Hash Cond: (a.patient_id = p.patient_id)
+                                                        Buffers: shared hit=1103 read=3686
+                                                        ->  Parallel Seq Scan on appointment a  (cost=0.00..6345.68 rows=166668 width=24) (actual time=0.013..27.893 rows=133334 loops=3)
+                                                              Buffers: shared hit=993 read=3686
+                                                        ->  Hash  (cost=8.43..8.43 rows=1 width=36) (actual time=0.018..0.018 rows=1 loops=3)
+                                                              Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                                              Buffers: shared hit=14
+                                                              ->  Index Scan using patient_hospital_no_key on patient p  (cost=0.41..8.43 rows=1 width=36) (actual time=0.013..0.014 rows=1 loops=3)
+                                                                    Index Cond: ((hospital_no)::text = 'LASUTH/2015/025017'::text)
+                                                                    Buffers: shared hit=14
+                                                  ->  Index Scan using consultation_appointment_id_key on consultation c  (cost=0.42..0.49 rows=1 width=16) (actual time=0.002..0.002 rows=1 loops=21)
+                                                        Index Cond: (appointment_id = a.appointment_id)
+                                                        Buffers: shared hit=81
+                                      ->  Sort  (cost=6.34..6.64 rows=120 width=6) (actual time=0.050..0.054 rows=117 loops=1)
+                                            Sort Key: dr.staff_id
+                                            Buffers: shared hit=1
+                                            Worker 1:  Sort Method: quicksort  Memory: 28kB
+                                            ->  Seq Scan on doctor dr  (cost=0.00..2.20 rows=120 width=6) (actual time=0.023..0.030 rows=120 loops=1)
+                                                  Buffers: shared hit=1
+                                ->  Index Scan using staff_pkey on staff s  (cost=0.14..0.16 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=17)
+                                      Index Cond: (staff_id = a.doctor_id)
+                                      Buffers: shared hit=35
+                          ->  Index Scan using specialty_pkey on specialty sp  (cost=0.13..0.25 rows=1 width=18) (actual time=0.001..0.001 rows=1 loops=17)
+                                Index Cond: (specialty_id = dr.specialty_id)
+                                Buffers: shared hit=35
+                    ->  Index Scan using diagnosis_pkey on diagnosis d  (cost=0.42..0.48 rows=1 width=14) (actual time=0.002..0.002 rows=1 loops=17)
+                          Index Cond: (consultation_id = c.consultation_id)
+                          Buffers: shared hit=69
+              ->  Index Scan using icd10_code_pkey on icd10_code i  (cost=0.14..0.15 rows=1 width=39) (actual time=0.001..0.001 rows=1 loops=17)
+                    Index Cond: ((code)::text = (d.icd10_code)::text)
+                    Buffers: shared hit=35
+Planning:
+  Buffers: shared hit=875
+Planning Time: 2.693 ms
+Execution Time: 54.475 ms

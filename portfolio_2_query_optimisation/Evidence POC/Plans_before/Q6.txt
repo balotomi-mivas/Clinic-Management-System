@@ -1,0 +1,75 @@
+Q6: Management report: monthly disease burden for 2026 by department
+
+SELECT date_trunc('month', c.consulted_at) AS month,
+       dep.name AS department,
+       d.icd10_code,
+       count(*) AS cases
+FROM diagnosis d
+JOIN consultation c ON c.consultation_id = d.consultation_id
+JOIN appointment a  ON a.appointment_id = c.appointment_id
+JOIN staff s        ON s.staff_id = a.doctor_id
+JOIN department dep ON dep.department_id = s.department_id
+WHERE c.consulted_at >= TIMESTAMPTZ '2026-01-01' AND c.consulted_at < TIMESTAMPTZ '2027-01-01'
+GROUP BY 1, 2, 3
+ORDER BY 1, 2, cases DESC;
+
+Incremental Sort  (cost=31181.00..51783.84 rows=159833 width=38) (actual time=420.692..445.052 rows=600 loops=1)
+  Sort Key: (date_trunc('month'::text, c.consulted_at)), dep.name, (count(*)) DESC
+  Presorted Key: (date_trunc('month'::text, c.consulted_at)), dep.name
+  Full-sort Groups: 17  Sort Method: quicksort  Average Memory: 27kB  Peak Memory: 27kB
+  Buffers: shared hit=6344 read=4176, temp read=811 written=813
+  ->  Finalize GroupAggregate  (cost=31180.82..47046.53 rows=159833 width=38) (actual time=419.762..444.812 rows=600 loops=1)
+        Group Key: (date_trunc('month'::text, c.consulted_at)), dep.name, d.icd10_code
+        Buffers: shared hit=6341 read=4176, temp read=811 written=813
+        ->  Gather Merge  (cost=31180.82..44108.43 rows=94019 width=38) (actual time=419.739..444.601 rows=1200 loops=1)
+              Workers Planned: 1
+              Workers Launched: 1
+              Buffers: shared hit=6341 read=4176, temp read=811 written=813
+              ->  Partial GroupAggregate  (cost=30180.81..32531.28 rows=94019 width=38) (actual time=410.658..432.330 rows=600 loops=2)
+                    Group Key: (date_trunc('month'::text, c.consulted_at)), dep.name, d.icd10_code
+                    Buffers: shared hit=6341 read=4176, temp read=811 written=813
+                    ->  Sort  (cost=30180.81..30415.85 rows=94019 width=30) (actual time=410.629..418.076 rows=79194 loops=2)
+                          Sort Key: (date_trunc('month'::text, c.consulted_at)), dep.name, d.icd10_code
+                          Sort Method: external merge  Disk: 3360kB
+                          Buffers: shared hit=6341 read=4176, temp read=811 written=813
+                          Worker 0:  Sort Method: external merge  Disk: 3128kB
+                          ->  Parallel Hash Join  (cost=14919.62..20164.02 rows=94019 width=30) (actual time=223.121..326.412 rows=79194 loops=2)
+                                Hash Cond: (d.consultation_id = c.consultation_id)
+                                Buffers: shared hit=6294 read=4176
+                                ->  Parallel Seq Scan on diagnosis d  (cost=0.00..3862.81 rows=201281 width=13) (actual time=0.007..19.086 rows=171088 loops=2)
+                                      Buffers: shared hit=1850
+                                ->  Parallel Hash  (cost=14087.16..14087.16 rows=66597 width=33) (actual time=221.614..221.964 rows=79194 loops=2)
+                                      Buckets: 262144  Batches: 1  Memory Usage: 12992kB
+                                      Buffers: shared hit=4428 read=4176
+                                      ->  Hash Join  (cost=6866.08..14087.16 rows=66597 width=33) (actual time=58.546..191.034 rows=79194 loops=2)
+                                            Hash Cond: (s.department_id = dep.department_id)
+                                            Buffers: shared hit=4428 read=4176
+                                            ->  Hash Join  (cost=6864.88..13828.81 rows=66597 width=18) (actual time=58.511..172.739 rows=79194 loops=2)
+                                                  Hash Cond: (a.doctor_id = s.staff_id)
+                                                  Buffers: shared hit=4411 read=4176
+                                                  ->  Parallel Hash Join  (cost=6860.07..13643.25 rows=66597 width=20) (actual time=58.462..156.760 rows=79194 loops=2)
+                                                        Hash Cond: (a.appointment_id = c.appointment_id)
+                                                        Buffers: shared hit=4392 read=4176
+                                                        ->  Parallel Seq Scan on appointment a  (cost=0.00..6345.68 rows=166668 width=12) (actual time=0.018..23.768 rows=200002 loops=2)
+                                                              Buffers: shared hit=503 read=4176
+                                                        ->  Parallel Hash  (cost=6027.61..6027.61 rows=66597 width=24) (actual time=56.846..56.847 rows=79194 loops=2)
+                                                              Buckets: 262144  Batches: 1  Memory Usage: 10752kB
+                                                              Buffers: shared hit=3889
+                                                              ->  Parallel Seq Scan on consultation c  (cost=0.00..6027.61 rows=66597 width=24) (actual time=0.005..35.185 rows=79194 loops=2)
+                                                                    Filter: ((consulted_at >= '2026-01-01 00:00:00+01'::timestamp with time zone) AND (consulted_at < '2027-01-01 00:00:00+01'::timestamp with time zone))
+                                                                    Rows Removed by Filter: 91894
+                                                                    Buffers: shared hit=3889
+                                                  ->  Hash  (cost=3.25..3.25 rows=125 width=6) (actual time=0.029..0.030 rows=125 loops=2)
+                                                        Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                                        Buffers: shared hit=4
+                                                        ->  Seq Scan on staff s  (cost=0.00..3.25 rows=125 width=6) (actual time=0.006..0.017 rows=125 loops=2)
+                                                              Buffers: shared hit=4
+                                            ->  Hash  (cost=1.09..1.09 rows=9 width=19) (actual time=0.015..0.016 rows=9 loops=2)
+                                                  Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                                  Buffers: shared hit=2
+                                                  ->  Seq Scan on department dep  (cost=0.00..1.09 rows=9 width=19) (actual time=0.008..0.009 rows=9 loops=2)
+                                                        Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=569
+Planning Time: 1.173 ms
+Execution Time: 445.383 ms

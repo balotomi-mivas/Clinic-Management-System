@@ -1,0 +1,55 @@
+Q4: Laboratory worklist: oldest 50 outstanding requests
+
+SELECT r.request_id, r.requested_at, t.name AS test, p.hospital_no, p.last_name
+FROM lab_request r
+JOIN lab_test t      ON t.test_id = r.test_id
+JOIN consultation c  ON c.consultation_id = r.consultation_id
+JOIN appointment a   ON a.appointment_id = c.appointment_id
+JOIN patient p       ON p.patient_id = a.patient_id
+WHERE r.status = 'REQUESTED'
+ORDER BY r.requested_at
+LIMIT 50;
+
+Limit  (cost=5517.39..5766.99 rows=50 width=59) (actual time=19.576..21.481 rows=50 loops=1)
+  Buffers: shared hit=3900
+  ->  Nested Loop  (cost=5517.39..25180.55 rows=3939 width=59) (actual time=19.576..21.476 rows=50 loops=1)
+        Buffers: shared hit=3900
+        ->  Nested Loop  (cost=5517.10..23927.39 rows=3939 width=37) (actual time=19.567..21.302 rows=50 loops=1)
+              Buffers: shared hit=3750
+              ->  Nested Loop  (cost=5516.68..21928.18 rows=3939 width=41) (actual time=19.557..21.052 rows=50 loops=1)
+                    Buffers: shared hit=3550
+                    ->  Gather Merge  (cost=5516.26..5975.02 rows=3939 width=41) (actual time=19.524..20.815 rows=50 loops=1)
+                          Workers Planned: 2
+                          Workers Launched: 2
+                          Buffers: shared hit=3350
+                          ->  Sort  (cost=4516.23..4520.34 rows=1641 width=41) (actual time=15.130..15.160 rows=326 loops=3)
+                                Sort Key: r.requested_at
+                                Sort Method: quicksort  Memory: 147kB
+                                Buffers: shared hit=3350
+                                Worker 0:  Sort Method: quicksort  Memory: 73kB
+                                Worker 1:  Sort Method: quicksort  Memory: 159kB
+                                ->  Hash Join  (cost=1.18..4428.60 rows=1641 width=41) (actual time=0.071..14.842 rows=1266 loops=3)
+                                      Hash Cond: (r.test_id = t.test_id)
+                                      Buffers: shared hit=3274
+                                      ->  Parallel Seq Scan on lab_request r  (cost=0.00..4420.83 rows=1641 width=26) (actual time=0.012..14.602 rows=1266 loops=3)
+                                            Filter: ((status)::text = 'REQUESTED'::text)
+                                            Rows Removed by Filter: 78467
+                                            Buffers: shared hit=3175
+                                      ->  Hash  (cost=1.08..1.08 rows=8 width=19) (actual time=0.011..0.011 rows=8 loops=3)
+                                            Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                            Buffers: shared hit=3
+                                            ->  Seq Scan on lab_test t  (cost=0.00..1.08 rows=8 width=19) (actual time=0.005..0.006 rows=8 loops=3)
+                                                  Buffers: shared hit=3
+                    ->  Index Scan using consultation_pkey on consultation c  (cost=0.42..4.05 rows=1 width=16) (actual time=0.004..0.004 rows=1 loops=50)
+                          Index Cond: (consultation_id = r.consultation_id)
+                          Buffers: shared hit=200
+              ->  Index Scan using appointment_pkey on appointment a  (cost=0.42..0.51 rows=1 width=12) (actual time=0.005..0.005 rows=1 loops=50)
+                    Index Cond: (appointment_id = c.appointment_id)
+                    Buffers: shared hit=200
+        ->  Index Scan using patient_pkey on patient p  (cost=0.29..0.32 rows=1 width=30) (actual time=0.003..0.003 rows=1 loops=50)
+              Index Cond: (patient_id = a.patient_id)
+              Buffers: shared hit=150
+Planning:
+  Buffers: shared hit=602
+Planning Time: 1.098 ms
+Execution Time: 21.572 ms

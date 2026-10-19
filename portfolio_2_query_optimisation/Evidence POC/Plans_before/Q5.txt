@@ -1,0 +1,44 @@
+Q5: Cashier: outstanding balance for one patient
+
+SELECT invoice_id, total_billed, total_paid, balance
+FROM v_invoice_balance
+WHERE patient_id = 25018 AND balance > 0;
+
+Merge Right Join  (cost=38526.38..65018.76 rows=2 width=104) (actual time=325.391..363.188 rows=2 loops=1)
+  Merge Cond: (invoice_line.invoice_id = inv.invoice_id)
+  Filter: ((COALESCE((sum(invoice_line.amount)), '0'::numeric) - COALESCE((sum(payment.amount)), '0'::numeric)) > '0'::numeric)
+  Rows Removed by Filter: 15
+  Buffers: shared hit=8478, temp read=1029 written=2801
+  ->  GroupAggregate  (cost=0.42..22215.46 rows=342178 width=40) (actual time=0.020..117.047 rows=292092 loops=1)
+        Group Key: invoice_line.invoice_id
+        Buffers: shared hit=3270
+        ->  Index Scan using invoice_line_pkey on invoice_line  (cost=0.42..16227.34 rows=342178 width=13) (actual time=0.015..26.010 rows=292094 loops=1)
+              Buffers: shared hit=3270
+  ->  Sort  (cost=38525.96..38525.97 rows=6 width=40) (actual time=233.873..233.948 rows=17 loops=1)
+        Sort Key: inv.invoice_id
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=5208, temp read=1029 written=2801
+        ->  Hash Right Join  (cost=28982.48..38525.88 rows=6 width=40) (actual time=104.926..233.916 rows=17 loops=1)
+              Hash Cond: (payment.invoice_id = inv.invoice_id)
+              Buffers: shared hit=5208, temp read=1029 written=2801
+              ->  HashAggregate  (cost=22613.80..28703.96 rows=273523 width=40) (actual time=70.831..203.458 rows=273523 loops=1)
+                    Group Key: payment.invoice_id
+                    Planned Partitions: 16  Batches: 17  Memory Usage: 8337kB  Disk Usage: 14912kB
+                    Buffers: shared hit=2356, temp read=1029 written=2801
+                    ->  Seq Scan on payment  (cost=0.00..5091.23 rows=273523 width=13) (actual time=0.009..14.370 rows=273523 loops=1)
+                          Buffers: shared hit=2356
+              ->  Hash  (cost=6368.61..6368.61 rows=6 width=8) (actual time=16.685..16.754 rows=17 loops=1)
+                    Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                    Buffers: shared hit=2852
+                    ->  Gather  (cost=1000.00..6368.61 rows=6 width=8) (actual time=3.272..16.738 rows=17 loops=1)
+                          Workers Planned: 1
+                          Workers Launched: 1
+                          Buffers: shared hit=2852
+                          ->  Parallel Seq Scan on invoice inv  (cost=0.00..5368.01 rows=4 width=8) (actual time=1.077..11.791 rows=8 loops=2)
+                                Filter: (patient_id = 25018)
+                                Rows Removed by Filter: 171080
+                                Buffers: shared hit=2852
+Planning:
+  Buffers: shared hit=284
+Planning Time: 0.635 ms
+Execution Time: 364.384 ms

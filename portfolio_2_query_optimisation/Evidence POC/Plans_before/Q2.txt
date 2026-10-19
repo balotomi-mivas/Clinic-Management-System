@@ -1,0 +1,32 @@
+Q2: Doctor's clinic list for a day (written with a cast on the column)
+
+SELECT a.appointment_id, a.scheduled_at, p.hospital_no, p.first_name, p.last_name, a.reason, a.status
+FROM appointment a
+JOIN patient p ON p.patient_id = a.patient_id
+WHERE a.doctor_id = 14
+  AND a.scheduled_at::date = DATE '2026-10-14'
+ORDER BY a.scheduled_at;
+
+Gather Merge  (cost=8653.96..8655.60 rows=14 width=68) (actual time=26.332..26.555 rows=16 loops=1)
+  Workers Planned: 2
+  Workers Launched: 2
+  Buffers: shared hit=1925 read=2822
+  ->  Sort  (cost=7653.94..7653.96 rows=7 width=68) (actual time=20.964..20.965 rows=5 loops=3)
+        Sort Key: a.scheduled_at
+        Sort Method: quicksort  Memory: 25kB
+        Buffers: shared hit=1925 read=2822
+        Worker 0:  Sort Method: quicksort  Memory: 25kB
+        Worker 1:  Sort Method: quicksort  Memory: 25kB
+        ->  Nested Loop  (cost=0.29..7653.84 rows=7 width=68) (actual time=3.608..20.941 rows=5 loops=3)
+              Buffers: shared hit=1907 read=2822
+              ->  Parallel Seq Scan on appointment a  (cost=0.00..7595.69 rows=7 width=40) (actual time=3.592..20.882 rows=5 loops=3)
+                    Filter: ((doctor_id = 14) AND ((scheduled_at)::date = '2026-10-14'::date))
+                    Rows Removed by Filter: 133329
+                    Buffers: shared hit=1857 read=2822
+              ->  Index Scan using patient_pkey on patient p  (cost=0.29..8.31 rows=1 width=36) (actual time=0.009..0.009 rows=1 loops=16)
+                    Index Cond: (patient_id = a.patient_id)
+                    Buffers: shared hit=50
+Planning:
+  Buffers: shared hit=319
+Planning Time: 0.513 ms
+Execution Time: 26.601 ms

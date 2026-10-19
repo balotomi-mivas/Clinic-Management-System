@@ -1,0 +1,15 @@
+Q3: Front desk search: patient forgot the card, search by surname and date of birth
+
+SELECT patient_id, hospital_no, first_name, last_name, date_of_birth, phone
+FROM patient
+WHERE lower(last_name) = 'okonkwo'
+  AND date_of_birth = DATE '1954-03-29';
+
+Seq Scan on patient  (cost=0.00..1948.05 rows=1 width=52) (actual time=0.017..2.823 rows=1 loops=1)
+  Filter: ((date_of_birth = '1954-03-29'::date) AND (lower((last_name)::text) = 'okonkwo'::text))
+  Rows Removed by Filter: 60002
+  Buffers: shared hit=898
+Planning:
+  Buffers: shared hit=112
+Planning Time: 0.195 ms
+Execution Time: 2.846 ms
