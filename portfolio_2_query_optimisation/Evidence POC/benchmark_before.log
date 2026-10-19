@@ -1,0 +1,6 @@
+before    Q1  median     52.297 ms  (7 runs)  top node: Gather Merge
+before    Q2  median     25.699 ms  (7 runs)  top node: Gather Merge
+before    Q3  median      2.836 ms  (7 runs)  top node: Seq Scan
+before    Q4  median     23.460 ms  (7 runs)  top node: Limit
+before    Q5  median    378.498 ms  (7 runs)  top node: Merge Join
+before    Q6  median    451.821 ms  (7 runs)  top node: Incremental Sort

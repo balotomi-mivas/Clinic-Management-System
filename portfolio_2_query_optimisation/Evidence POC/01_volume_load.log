@@ -1,0 +1,35 @@
+SET
+ setseed 
+---------
+ 
+(1 row)
+
+INSERT 0 115
+INSERT 0 115
+INSERT 0 60000
+INSERT 0 400000
+INSERT 0 342174
+ALTER TABLE
+INSERT 0 342174
+ALTER TABLE
+INSERT 0 239199
+INSERT 0 342174
+INSERT 0 342174
+INSERT 0 342174
+INSERT 0 342174
+INSERT 0 273521
+VACUUM
+    table_name     | count  
+-------------------+--------
+ doctor            |    120
+ patient           |  60003
+ payment           | 273523
+ diagnosis         | 342177
+ lab_request       | 239200
+ invoice           | 342177
+ appointment       | 400003
+ prescription_item | 342179
+ consultation      | 342177
+ prescription      | 342177
+(10 rows)
+
