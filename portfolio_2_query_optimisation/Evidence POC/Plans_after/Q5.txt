@@ -1,0 +1,29 @@
+Q5: Cashier: outstanding balance for one patient
+
+SELECT invoice_id, total_billed, total_paid, balance
+FROM v_invoice_balance
+WHERE patient_id = 25018 AND balance > 0;
+
+Nested Loop  (cost=17.31..128.86 rows=2 width=104) (actual time=0.056..0.102 rows=2 loops=1)
+  Join Filter: (((COALESCE(sum(il.amount), '0'::numeric)) - (COALESCE(sum(p.amount), '0'::numeric))) > '0'::numeric)
+  Rows Removed by Join Filter: 15
+  Buffers: shared hit=141
+  ->  Nested Loop  (cost=8.87..78.04 rows=6 width=40) (actual time=0.020..0.056 rows=17 loops=1)
+        Buffers: shared hit=75
+        ->  Index Scan using ix_invoice_patient on invoice inv  (cost=0.42..27.25 rows=6 width=8) (actual time=0.008..0.012 rows=17 loops=1)
+              Index Cond: (patient_id = 25018)
+              Buffers: shared hit=7
+        ->  Aggregate  (cost=8.44..8.45 rows=1 width=32) (actual time=0.002..0.002 rows=1 loops=17)
+              Buffers: shared hit=68
+              ->  Index Scan using invoice_line_pkey on invoice_line il  (cost=0.42..8.44 rows=1 width=5) (actual time=0.002..0.002 rows=1 loops=17)
+                    Index Cond: (invoice_id = inv.invoice_id)
+                    Buffers: shared hit=68
+  ->  Aggregate  (cost=8.44..8.45 rows=1 width=32) (actual time=0.002..0.002 rows=1 loops=17)
+        Buffers: shared hit=66
+        ->  Index Scan using ix_payment_invoice on payment p  (cost=0.42..8.44 rows=1 width=5) (actual time=0.002..0.002 rows=1 loops=17)
+              Index Cond: (invoice_id = inv.invoice_id)
+              Buffers: shared hit=66
+Planning:
+  Buffers: shared hit=284
+Planning Time: 0.407 ms
+Execution Time: 0.140 ms

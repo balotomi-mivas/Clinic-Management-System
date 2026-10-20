@@ -1,0 +1,56 @@
+Q1: Folder retrieval: full history of one patient at the consulting room
+
+SELECT *
+FROM v_patient_history
+WHERE hospital_no = 'LASUTH/2015/025017'
+ORDER BY visit_date DESC;
+
+Sort  (cost=27.56..27.58 rows=6 width=143) (actual time=0.160..0.162 rows=17 loops=1)
+  Sort Key: ((a.scheduled_at)::date) DESC
+  Sort Method: quicksort  Memory: 27kB
+  Buffers: shared hit=262
+  ->  Hash Join  (cost=3.26..27.49 rows=6 width=143) (actual time=0.061..0.141 rows=17 loops=1)
+        Hash Cond: (dr.specialty_id = sp.specialty_id)
+        Buffers: shared hit=259
+        ->  Nested Loop Left Join  (cost=2.10..26.23 rows=6 width=93) (actual time=0.044..0.118 rows=17 loops=1)
+              Buffers: shared hit=258
+              ->  Nested Loop Left Join  (cost=1.97..25.31 rows=6 width=59) (actual time=0.040..0.102 rows=17 loops=1)
+                    Buffers: shared hit=224
+                    ->  Nested Loop  (cost=1.54..22.39 rows=6 width=61) (actual time=0.034..0.080 rows=17 loops=1)
+                          Buffers: shared hit=156
+                          ->  Nested Loop  (cost=1.40..21.43 rows=6 width=67) (actual time=0.031..0.066 rows=17 loops=1)
+                                Buffers: shared hit=122
+                                ->  Nested Loop  (cost=1.26..20.47 rows=6 width=51) (actual time=0.026..0.049 rows=17 loops=1)
+                                      Buffers: shared hit=88
+                                      ->  Nested Loop  (cost=0.84..17.05 rows=7 width=51) (actual time=0.018..0.023 rows=21 loops=1)
+                                            Buffers: shared hit=8
+                                            ->  Index Scan using patient_hospital_no_key on patient p  (cost=0.41..8.43 rows=1 width=35) (actual time=0.011..0.011 rows=1 loops=1)
+                                                  Index Cond: ((hospital_no)::text = 'LASUTH/2015/025017'::text)
+                                                  Buffers: shared hit=4
+                                            ->  Index Scan using ix_appointment_patient on appointment a  (cost=0.42..8.54 rows=7 width=24) (actual time=0.005..0.007 rows=21 loops=1)
+                                                  Index Cond: (patient_id = p.patient_id)
+                                                  Buffers: shared hit=4
+                                      ->  Index Scan using consultation_appointment_id_key on consultation c  (cost=0.42..0.49 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=21)
+                                            Index Cond: (appointment_id = a.appointment_id)
+                                            Buffers: shared hit=80
+                                ->  Index Scan using staff_pkey on staff s  (cost=0.14..0.16 rows=1 width=16) (actual time=0.001..0.001 rows=1 loops=17)
+                                      Index Cond: (staff_id = a.doctor_id)
+                                      Buffers: shared hit=34
+                          ->  Index Scan using doctor_pkey on doctor dr  (cost=0.14..0.16 rows=1 width=6) (actual time=0.001..0.001 rows=1 loops=17)
+                                Index Cond: (staff_id = a.doctor_id)
+                                Buffers: shared hit=34
+                    ->  Index Scan using diagnosis_pkey on diagnosis d  (cost=0.42..0.48 rows=1 width=14) (actual time=0.001..0.001 rows=1 loops=17)
+                          Index Cond: (consultation_id = c.consultation_id)
+                          Buffers: shared hit=68
+              ->  Index Scan using icd10_code_pkey on icd10_code i  (cost=0.14..0.15 rows=1 width=39) (actual time=0.001..0.001 rows=1 loops=17)
+                    Index Cond: ((code)::text = (d.icd10_code)::text)
+                    Buffers: shared hit=34
+        ->  Hash  (cost=1.07..1.07 rows=7 width=18) (actual time=0.008..0.009 rows=7 loops=1)
+              Buckets: 1024  Batches: 1  Memory Usage: 9kB
+              Buffers: shared hit=1
+              ->  Seq Scan on specialty sp  (cost=0.00..1.07 rows=7 width=18) (actual time=0.003..0.004 rows=7 loops=1)
+                    Buffers: shared hit=1
+Planning:
+  Buffers: shared hit=979
+Planning Time: 2.643 ms
+Execution Time: 0.229 ms

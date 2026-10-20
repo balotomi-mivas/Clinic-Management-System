@@ -1,0 +1,45 @@
+Q4: Laboratory worklist: oldest 50 outstanding requests
+
+SELECT r.request_id, r.requested_at, t.name AS test, p.hospital_no, p.last_name
+FROM lab_request r
+JOIN lab_test t      ON t.test_id = r.test_id
+JOIN consultation c  ON c.consultation_id = r.consultation_id
+JOIN appointment a   ON a.appointment_id = c.appointment_id
+JOIN patient p       ON p.patient_id = a.patient_id
+WHERE r.status = 'REQUESTED'
+ORDER BY r.requested_at
+LIMIT 50;
+
+Limit  (cost=1.56..377.14 rows=50 width=59) (actual time=0.036..0.566 rows=50 loops=1)
+  Buffers: shared hit=618
+  ->  Nested Loop  (cost=1.56..28327.88 rows=3771 width=59) (actual time=0.035..0.561 rows=50 loops=1)
+        Buffers: shared hit=618
+        ->  Nested Loop  (cost=1.27..27128.17 rows=3771 width=37) (actual time=0.028..0.429 rows=50 loops=1)
+              Buffers: shared hit=468
+              ->  Nested Loop  (cost=0.84..25214.22 rows=3771 width=41) (actual time=0.024..0.274 rows=50 loops=1)
+                    Buffers: shared hit=268
+                    ->  Nested Loop  (cost=0.42..9634.98 rows=3771 width=41) (actual time=0.016..0.139 rows=50 loops=1)
+                          Buffers: shared hit=68
+                          ->  Index Scan using ix_lab_request_pending on lab_request r  (cost=0.28..9544.84 rows=3771 width=26) (actual time=0.009..0.103 rows=50 loops=1)
+                                Buffers: shared hit=52
+                          ->  Memoize  (cost=0.14..0.16 rows=1 width=19) (actual time=0.000..0.000 rows=1 loops=50)
+                                Cache Key: r.test_id
+                                Cache Mode: logical
+                                Hits: 42  Misses: 8  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                                Buffers: shared hit=16
+                                ->  Index Scan using lab_test_pkey on lab_test t  (cost=0.13..0.15 rows=1 width=19) (actual time=0.001..0.001 rows=1 loops=8)
+                                      Index Cond: (test_id = r.test_id)
+                                      Buffers: shared hit=16
+                    ->  Index Scan using consultation_pkey on consultation c  (cost=0.42..4.13 rows=1 width=16) (actual time=0.002..0.002 rows=1 loops=50)
+                          Index Cond: (consultation_id = r.consultation_id)
+                          Buffers: shared hit=200
+              ->  Index Scan using appointment_pkey on appointment a  (cost=0.42..0.51 rows=1 width=12) (actual time=0.003..0.003 rows=1 loops=50)
+                    Index Cond: (appointment_id = c.appointment_id)
+                    Buffers: shared hit=200
+        ->  Index Scan using patient_pkey on patient p  (cost=0.29..0.32 rows=1 width=30) (actual time=0.002..0.002 rows=1 loops=50)
+              Index Cond: (patient_id = a.patient_id)
+              Buffers: shared hit=150
+Planning:
+  Buffers: shared hit=692
+Planning Time: 1.094 ms
+Execution Time: 0.613 ms

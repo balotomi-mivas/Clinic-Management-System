@@ -1,0 +1,19 @@
+Q6: Management report, read from the precomputed materialised view
+
+SELECT month, department, icd10_code, cases
+FROM mv_monthly_disease_burden
+WHERE month >= TIMESTAMPTZ '2026-01-01' AND month < TIMESTAMPTZ '2027-01-01'
+ORDER BY 1, 2, cases DESC;
+
+Sort  (cost=62.59..64.09 rows=600 width=39) (actual time=0.266..0.287 rows=600 loops=1)
+  Sort Key: month, department, cases DESC
+  Sort Method: quicksort  Memory: 63kB
+  Buffers: shared hit=25
+  ->  Seq Scan on mv_monthly_disease_burden  (cost=0.00..34.90 rows=600 width=39) (actual time=0.031..0.074 rows=600 loops=1)
+        Filter: ((month >= '2026-01-01 00:00:00+01'::timestamp with time zone) AND (month < '2027-01-01 00:00:00+01'::timestamp with time zone))
+        Rows Removed by Filter: 660
+        Buffers: shared hit=16
+Planning:
+  Buffers: shared hit=106
+Planning Time: 0.180 ms
+Execution Time: 0.322 ms

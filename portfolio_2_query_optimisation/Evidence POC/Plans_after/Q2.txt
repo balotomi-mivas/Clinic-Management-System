@@ -1,0 +1,22 @@
+Q2: Doctor's clinic list for a day. The cast on scheduled_at is replaced by a half open range so the composite index can be used directly.
+
+SELECT a.appointment_id, a.scheduled_at, p.hospital_no, p.first_name, p.last_name, a.reason, a.status
+FROM appointment a
+JOIN patient p ON p.patient_id = a.patient_id
+WHERE a.doctor_id = 14
+  AND a.scheduled_at >= TIMESTAMPTZ '2026-10-14 00:00+01'
+  AND a.scheduled_at <  TIMESTAMPTZ '2026-10-15 00:00+01'
+ORDER BY a.scheduled_at;
+
+Nested Loop  (cost=0.71..66.07 rows=5 width=67) (actual time=0.020..0.080 rows=16 loops=1)
+  Buffers: shared hit=67
+  ->  Index Scan using ix_appointment_doctor_time on appointment a  (cost=0.42..24.53 rows=5 width=40) (actual time=0.011..0.023 rows=16 loops=1)
+        Index Cond: ((doctor_id = 14) AND (scheduled_at >= '2026-10-14 00:00:00+01'::timestamp with time zone) AND (scheduled_at < '2026-10-15 00:00:00+01'::timestamp with time zone))
+        Buffers: shared hit=19
+  ->  Index Scan using patient_pkey on patient p  (cost=0.29..8.31 rows=1 width=35) (actual time=0.003..0.003 rows=1 loops=16)
+        Index Cond: (patient_id = a.patient_id)
+        Buffers: shared hit=48
+Planning:
+  Buffers: shared hit=381
+Planning Time: 0.620 ms
+Execution Time: 0.107 ms

@@ -1,0 +1,14 @@
+Q3: Front desk search: patient forgot the card, search by surname and date of birth
+
+SELECT patient_id, hospital_no, first_name, last_name, date_of_birth, phone
+FROM patient
+WHERE lower(last_name) = 'okonkwo'
+  AND date_of_birth = DATE '1954-03-29';
+
+Index Scan using ix_patient_lower_surname_dob on patient  (cost=0.41..8.43 rows=1 width=51) (actual time=0.007..0.007 rows=1 loops=1)
+  Index Cond: ((lower((last_name)::text) = 'okonkwo'::text) AND (date_of_birth = '1954-03-29'::date))
+  Buffers: shared hit=4
+Planning:
+  Buffers: shared hit=140
+Planning Time: 0.226 ms
+Execution Time: 0.028 ms
