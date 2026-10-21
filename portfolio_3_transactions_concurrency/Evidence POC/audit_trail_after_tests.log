@@ -1,0 +1,14 @@
+ audit_id | table_name  | record_id | action |   old_value    |   new_value    |          changed_at           
+----------+-------------+-----------+--------+----------------+----------------+-------------------------------
+        4 | lab_request |         1 | UPDATE | Positive (++)  | Positive (++)  | 2026-10-16 05:11:49.302573+01
+        5 | lab_request |         1 | UPDATE | Positive (++)  | Positive (+++) | 2026-10-16 05:11:49.304684+01
+        6 | lab_request |         1 | UPDATE | Positive (+++) | Positive (++)  | 2026-10-16 05:11:51.150534+01
+        7 | lab_request |         1 | UPDATE | Positive (++)  | Positive (+++) | 2026-10-16 05:11:51.163714+01
+        8 | lab_request |         1 | UPDATE | Positive (+++) | Positive (++)  | 2026-10-16 05:11:51.166831+01
+        9 | lab_request |         1 | UPDATE | Positive (++)  | Positive (++)  | 2026-10-16 05:12:10.382562+01
+       10 | lab_request |         1 | UPDATE | Positive (++)  | Positive (+++) | 2026-10-16 05:12:10.384392+01
+       11 | lab_request |         1 | UPDATE | Positive (+++) | Positive (++)  | 2026-10-16 05:12:12.221911+01
+       12 | lab_request |         1 | UPDATE | Positive (++)  | Positive (+++) | 2026-10-16 05:12:12.230224+01
+       13 | lab_request |         1 | UPDATE | Positive (+++) | Positive (++)  | 2026-10-16 05:12:12.233272+01
+(10 rows)
+

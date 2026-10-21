@@ -1,0 +1,318 @@
+[  0.000s] Runner        | Connected with host=localhost user=postgres dbname=lasuth
+
+==============================================================================
+SCENARIO 1  Atomic dispensing that COMMITS
+==============================================================================
+[  0.003s] Session Admin | UPDATE drug SET stock_qty = 100 WHERE name = 'Demo Coartem'
+[  0.004s]   Admin ->    | UPDATE 1
+[  0.004s] Session Admin | INSERT INTO prescription (consultation_id) VALUES (1) RETURNING prescription_id
+[  0.006s]   Admin ->    | prescription_id = 342182
+[  0.006s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+              SELECT 342182, drug_id, '4 tablets', 'twice daily', 3, 24 FROM drug WHERE name = 'Demo Coartem'
+[  0.007s]   Admin ->    | INSERT 0 1
+[  0.010s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.010s]   A ->        | BEGIN
+[  0.010s] Session A     | CALL sp_dispense_prescription(342182, 8)
+[  0.014s]   A ->        | CALL
+[  0.014s] Session A     | COMMIT
+[  0.015s]   A ->        | COMMIT
+[  0.015s] Session Admin | SELECT name, stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  0.015s]   Admin ->    | name, stock_qty = ('Demo Coartem', 76)
+[  0.015s] Session Admin | SELECT prescription_id, status, dispensed_by FROM prescription WHERE prescription_id = 342182
+[  0.015s]   Admin ->    | prescription_id, status, dispensed_by = (342182, 'DISPENSED', 8)
+[  0.015s] Session Admin | SELECT invoice_id, line_no, description, amount FROM invoice_line WHERE description LIKE 'Drug: Demo%' ORDER BY invoice_id, line_no
+[  0.043s]   Admin ->    | invoice_id, line_no, description, amount = (342178, 1, 'Drug: Demo Coartem x24', Decimal('8400.00')); (342178, 2, 'Drug: Demo Coartem x1', Decimal('350.00')); (342178, 3, 'Drug: Demo Ceftriaxone x1', Decimal('1500.00')); (342178, 4, 'Drug: Demo Coartem x1', Decimal('350.00')); (342178, 5, 'Drug: Demo Ceftriaxone x1', Decimal('1500.00')); (342178, 6, 'Drug: Demo Coartem x24', Decimal('8400.00'))
+
+==============================================================================
+SCENARIO 2  Failure part way through: the whole transaction ROLLS BACK
+==============================================================================
+[  0.049s] Session Admin | INSERT INTO prescription (consultation_id) VALUES (1) RETURNING prescription_id
+[  0.051s]   Admin ->    | prescription_id = 342183
+[  0.053s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+              SELECT 342183, drug_id, 'as directed', 'daily', 3,
+                     CASE WHEN name = 'Demo Coartem' THEN 24 ELSE 5 END
+              FROM drug WHERE name IN ('Demo Coartem', 'Demo Ceftriaxone')
+[  0.055s]   Admin ->    | INSERT 0 2
+[  0.055s] Session Admin | SELECT name, stock_qty FROM drug WHERE name LIKE 'Demo%' ORDER BY drug_id
+[  0.055s]   Admin ->    | name, stock_qty = ('Demo Coartem', 76); ('Demo Ceftriaxone', 2)
+[  0.057s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.057s]   A ->        | BEGIN
+[  0.057s] Session A     | CALL sp_dispense_prescription(342183, 8)
+[  0.060s]   A ->        | ERROR P0002: ERROR:  Insufficient stock for Demo Ceftriaxone: need 5, have 2
+[  0.061s] Session A     | SELECT 1
+[  0.061s]   A ->        | ERROR 25P02: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+[  0.061s] Session A     | ROLLBACK
+[  0.061s]   A ->        | ROLLBACK
+[  0.061s] Note          | Coartem was decremented inside the procedure before Ceftriaxone failed. After rollback it must still be 76.
+[  0.061s] Session Admin | SELECT name, stock_qty FROM drug WHERE name LIKE 'Demo%' ORDER BY drug_id
+[  0.061s]   Admin ->    | name, stock_qty = ('Demo Coartem', 76); ('Demo Ceftriaxone', 2)
+[  0.061s] Session Admin | SELECT prescription_id, status FROM prescription WHERE prescription_id = 342183
+[  0.061s]   Admin ->    | prescription_id, status = (342183, 'PENDING')
+
+==============================================================================
+SCENARIO 2b  SAVEPOINT: one bad lab result is undone, the rest of the batch commits
+==============================================================================
+[  0.061s] Session Admin | UPDATE lab_request SET result_value = 'Positive (++)' WHERE request_id = 1
+[  0.063s]   Admin ->    | UPDATE 1
+[  0.063s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.063s]   A ->        | BEGIN
+[  0.063s] Session A     | UPDATE lab_request SET result_value = 'Positive (+++)', is_abnormal = TRUE WHERE request_id = 1
+[  0.064s]   A ->        | UPDATE 1
+[  0.064s] Session A     | SAVEPOINT before_second_result
+[  0.064s]   A ->        | SAVEPOINT
+[  0.064s] Session A     | UPDATE lab_request SET status = 'REPORTED', result_value = NULL WHERE request_id = 2
+[  0.064s]   A ->        | ERROR 23514: ERROR:  new row for relation "lab_request" violates check constraint "lab_request_check"
+[  0.064s] Session A     | ROLLBACK TO SAVEPOINT before_second_result
+[  0.064s]   A ->        | ROLLBACK
+[  0.064s] Session A     | COMMIT
+[  0.064s]   A ->        | COMMIT
+[  0.065s] Session Admin | SELECT request_id, status, result_value FROM lab_request WHERE request_id IN (1, 2) ORDER BY 1
+[  0.065s]   Admin ->    | request_id, status, result_value = (1, 'REPORTED', 'Positive (+++)'); (2, 'REPORTED', 'See report')
+
+==============================================================================
+SCENARIO 3  LOST UPDATE: two pharmacists issue 30 tablets each from the same stock
+==============================================================================
+[  0.070s] Session Admin | UPDATE drug SET stock_qty = 100 WHERE name = 'Demo Coartem'
+[  0.071s]   Admin ->    | UPDATE 1
+[  0.076s] Note          | Problem version: the application reads stock, subtracts in code, writes the result back.
+[  0.076s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.076s]   A ->        | BEGIN
+[  0.076s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.076s]   B ->        | BEGIN
+[  0.076s] Session A     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  0.077s]   A ->        | stock_qty = 100
+[  0.077s] Session B     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  0.078s]   B ->        | stock_qty = 100
+[  0.078s] Session A     | UPDATE drug SET stock_qty = 70 WHERE name = 'Demo Coartem'
+[  0.078s]   A ->        | UPDATE 1
+[  0.078s] Session B     | UPDATE drug SET stock_qty = 70 WHERE name = 'Demo Coartem'
+[  0.680s] Monitor       | pg_stat_activity: session_A state=idle in transaction wait=Client/ClientRead blocked_by=[]
+[  0.681s] Monitor       | pg_stat_activity: session_B state=active wait=Lock/transactionid blocked_by=[3659]
+[  0.681s] Session A     | COMMIT
+[  0.681s]   A ->        | COMMIT
+[  0.682s]   B ->        | UPDATE 1
+[  0.682s] Session B     | COMMIT
+[  0.682s]   B ->        | COMMIT
+[  0.682s] Session Admin | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  0.682s]   Admin ->    | stock_qty = 70
+[  0.682s] Result        | Expected 40, database holds 70. Thirty tablets left the shelf without being recorded.
+[  0.682s] Note          | Fix 1: pessimistic locking with SELECT ... FOR UPDATE.
+[  0.682s] Session Admin | UPDATE drug SET stock_qty = 100 WHERE name = 'Demo Coartem'
+[  0.683s]   Admin ->    | UPDATE 1
+[  0.683s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.683s]   A ->        | BEGIN
+[  0.683s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  0.683s]   B ->        | BEGIN
+[  0.683s] Session A     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem' FOR UPDATE
+[  0.683s]   A ->        | stock_qty = 100
+[  0.683s] Session B     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem' FOR UPDATE
+[  1.285s] Monitor       | pg_stat_activity: session_A state=idle in transaction wait=Client/ClientRead blocked_by=[]
+[  1.285s] Monitor       | pg_stat_activity: session_B state=active wait=Lock/transactionid blocked_by=[3659]
+[  1.285s] Session A     | UPDATE drug SET stock_qty = 70 WHERE name = 'Demo Coartem'
+[  1.286s]   A ->        | UPDATE 1
+[  1.286s] Session A     | COMMIT
+[  1.286s]   A ->        | COMMIT
+[  1.286s]   B ->        | stock_qty = 70
+[  1.287s] Session B     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.287s]   B ->        | stock_qty = 70
+[  1.287s] Session B     | UPDATE drug SET stock_qty = stock_qty - 30 WHERE name = 'Demo Coartem'
+[  1.287s]   B ->        | UPDATE 1
+[  1.287s] Session B     | COMMIT
+[  1.288s]   B ->        | COMMIT
+[  1.288s] Session Admin | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.288s]   Admin ->    | stock_qty = 40
+[  1.288s] Note          | Fix 2: optimistic approach with REPEATABLE READ. The second writer is refused and must retry.
+[  1.288s] Session Admin | UPDATE drug SET stock_qty = 100 WHERE name = 'Demo Coartem'
+[  1.288s]   Admin ->    | UPDATE 1
+[  1.288s] Session A     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.288s]   A ->        | BEGIN
+[  1.288s] Session B     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.288s]   B ->        | BEGIN
+[  1.288s] Session A     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.289s]   A ->        | stock_qty = 100
+[  1.289s] Session B     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.289s]   B ->        | stock_qty = 100
+[  1.289s] Session A     | UPDATE drug SET stock_qty = 70 WHERE name = 'Demo Coartem'
+[  1.289s]   A ->        | UPDATE 1
+[  1.289s] Session B     | UPDATE drug SET stock_qty = 70 WHERE name = 'Demo Coartem'
+[  1.889s] Session A     | COMMIT
+[  1.890s]   A ->        | COMMIT
+[  1.890s]   B ->        | ERROR 40001: ERROR:  could not serialize access due to concurrent update
+[  1.890s] Session B     | ROLLBACK
+[  1.890s]   B ->        | ROLLBACK
+[  1.890s] Note          | Session B retries in a fresh transaction and now sees 70.
+[  1.891s] Session B     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.891s]   B ->        | BEGIN
+[  1.891s] Session B     | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.891s]   B ->        | stock_qty = 70
+[  1.891s] Session B     | UPDATE drug SET stock_qty = 40 WHERE name = 'Demo Coartem'
+[  1.891s]   B ->        | UPDATE 1
+[  1.891s] Session B     | COMMIT
+[  1.891s]   B ->        | COMMIT
+[  1.891s] Session Admin | SELECT stock_qty FROM drug WHERE name = 'Demo Coartem'
+[  1.892s]   Admin ->    | stock_qty = 40
+
+==============================================================================
+SCENARIO 4  NON REPEATABLE READ: READ COMMITTED versus REPEATABLE READ
+==============================================================================
+[  1.900s] Session Admin | UPDATE lab_request SET result_value = 'Positive (++)' WHERE request_id = 1
+[  1.903s]   Admin ->    | UPDATE 1
+[  1.908s] Note          | Doctor (A) reads the malaria result twice inside one READ COMMITTED transaction while the lab (B) amends it.
+[  1.908s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  1.908s]   A ->        | BEGIN
+[  1.908s] Session A     | SELECT result_value FROM lab_request WHERE request_id = 1
+[  1.909s]   A ->        | result_value = Positive (++)
+[  1.909s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  1.909s]   B ->        | BEGIN
+[  1.909s] Session B     | UPDATE lab_request SET result_value = CASE WHEN result_value = 'Positive (++)' THEN 'Positive (+++)' ELSE 'Positive (++)' END WHERE request_id = 1
+[  1.911s]   B ->        | UPDATE 1
+[  1.911s] Session B     | COMMIT
+[  1.911s]   B ->        | COMMIT
+[  1.911s] Session A     | SELECT result_value FROM lab_request WHERE request_id = 1
+[  1.912s]   A ->        | result_value = Positive (+++)
+[  1.912s] Session A     | COMMIT
+[  1.912s]   A ->        | COMMIT
+[  1.912s] Note          | Doctor (A) reads the malaria result twice inside one REPEATABLE READ transaction while the lab (B) amends it.
+[  1.912s] Session A     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.912s]   A ->        | BEGIN
+[  1.912s] Session A     | SELECT result_value FROM lab_request WHERE request_id = 1
+[  1.912s]   A ->        | result_value = Positive (+++)
+[  1.912s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  1.912s]   B ->        | BEGIN
+[  1.912s] Session B     | UPDATE lab_request SET result_value = CASE WHEN result_value = 'Positive (++)' THEN 'Positive (+++)' ELSE 'Positive (++)' END WHERE request_id = 1
+[  1.912s]   B ->        | UPDATE 1
+[  1.912s] Session B     | COMMIT
+[  1.915s]   B ->        | COMMIT
+[  1.915s] Session A     | SELECT result_value FROM lab_request WHERE request_id = 1
+[  1.915s]   A ->        | result_value = Positive (+++)
+[  1.915s] Session A     | COMMIT
+[  1.915s]   A ->        | COMMIT
+
+==============================================================================
+SCENARIO 5  WRITE SKEW on the Children Emergency Ward rota (rule: at least one doctor on duty)
+==============================================================================
+[  1.926s] Session Admin | UPDATE duty_rota SET on_duty = TRUE
+[  1.927s]   Admin ->    | UPDATE 2
+[  1.927s] Note          | Dr Okafor (A) and Dr Adeyemi (B) both ask to go off duty at the same moment under REPEATABLE READ.
+[  1.927s] Session A     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.928s]   A ->        | BEGIN
+[  1.928s] Session B     | BEGIN ISOLATION LEVEL REPEATABLE READ
+[  1.928s]   B ->        | BEGIN
+[  1.928s] Session A     | SELECT count(*) AS on_duty FROM duty_rota WHERE ward = 'Children Emergency Ward' AND on_duty
+[  1.928s]   A ->        | on_duty = 2
+[  1.928s] Session B     | SELECT count(*) AS on_duty FROM duty_rota WHERE ward = 'Children Emergency Ward' AND on_duty
+[  1.929s]   B ->        | on_duty = 2
+[  1.929s] Note          | Each sees 2 on duty, so each decides it is safe to leave.
+[  1.929s] Session A     | UPDATE duty_rota SET on_duty = FALSE WHERE doctor_id = 3
+[  1.930s]   A ->        | UPDATE 1
+[  1.930s] Session B     | UPDATE duty_rota SET on_duty = FALSE WHERE doctor_id = 2
+[  1.930s]   B ->        | UPDATE 1
+[  1.930s] Session A     | COMMIT
+[  1.930s]   A ->        | COMMIT
+[  1.930s] Session B     | COMMIT
+[  1.931s]   B ->        | COMMIT
+[  1.931s] Session Admin | SELECT count(*) AS on_duty_now FROM duty_rota WHERE on_duty
+[  1.932s]   Admin ->    | on_duty_now = 0
+[  1.932s] Result        | REPEATABLE READ: doctors on duty after both commits = 0
+[  1.932s] Session Admin | UPDATE duty_rota SET on_duty = TRUE
+[  1.932s]   Admin ->    | UPDATE 2
+[  1.932s] Note          | Dr Okafor (A) and Dr Adeyemi (B) both ask to go off duty at the same moment under SERIALIZABLE.
+[  1.932s] Session A     | BEGIN ISOLATION LEVEL SERIALIZABLE
+[  1.932s]   A ->        | BEGIN
+[  1.932s] Session B     | BEGIN ISOLATION LEVEL SERIALIZABLE
+[  1.932s]   B ->        | BEGIN
+[  1.932s] Session A     | SELECT count(*) AS on_duty FROM duty_rota WHERE ward = 'Children Emergency Ward' AND on_duty
+[  1.933s]   A ->        | on_duty = 2
+[  1.933s] Session B     | SELECT count(*) AS on_duty FROM duty_rota WHERE ward = 'Children Emergency Ward' AND on_duty
+[  1.933s]   B ->        | on_duty = 2
+[  1.933s] Note          | Each sees 2 on duty, so each decides it is safe to leave.
+[  1.933s] Session A     | UPDATE duty_rota SET on_duty = FALSE WHERE doctor_id = 3
+[  1.934s]   A ->        | UPDATE 1
+[  1.934s] Session B     | UPDATE duty_rota SET on_duty = FALSE WHERE doctor_id = 2
+[  1.934s]   B ->        | UPDATE 1
+[  1.934s] Session A     | COMMIT
+[  1.937s]   A ->        | COMMIT
+[  1.937s] Session B     | COMMIT
+[  1.937s]   B ->        | ERROR 40001: ERROR:  could not serialize access due to read/write dependencies among transactions
+[  1.937s] Session Admin | SELECT count(*) AS on_duty_now FROM duty_rota WHERE on_duty
+[  1.937s]   Admin ->    | on_duty_now = 1
+[  1.937s] Result        | SERIALIZABLE: doctors on duty after both commits = 1
+
+==============================================================================
+SCENARIO 6  Two receptionists book the same doctor slot at the same time
+==============================================================================
+[  1.944s] Session Admin | DELETE FROM appointment WHERE doctor_id = 1 AND scheduled_at::date = DATE '2026-10-20'
+[  1.951s]   Admin ->    | DELETE 1
+[  1.955s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  1.955s]   A ->        | BEGIN
+[  1.955s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  1.955s]   B ->        | BEGIN
+[  1.955s] Session A     | INSERT INTO appointment (patient_id, doctor_id, scheduled_at, reason) VALUES (1, 1, TIMESTAMPTZ '2026-10-20 10:00+01', 'Review') RETURNING appointment_id
+[  1.958s]   A ->        | appointment_id = 400008
+[  1.958s] Session B     | INSERT INTO appointment (patient_id, doctor_id, scheduled_at, reason) VALUES (2, 1, TIMESTAMPTZ '2026-10-20 10:05+01', 'Review') RETURNING appointment_id
+[  2.560s] Monitor       | pg_stat_activity: session_A state=idle in transaction wait=Client/ClientRead blocked_by=[]
+[  2.560s] Monitor       | pg_stat_activity: session_B state=active wait=Lock/transactionid blocked_by=[3671]
+[  2.560s] Session A     | COMMIT
+[  2.561s]   A ->        | COMMIT
+[  2.561s]   B ->        | ERROR 23P01: ERROR:  conflicting key value violates exclusion constraint "no_double_booking"
+[  2.561s] Session B     | ROLLBACK
+[  2.561s]   B ->        | ROLLBACK
+[  2.561s] Session Admin | SELECT appointment_id, patient_id, scheduled_at::text FROM appointment WHERE doctor_id = 1 AND scheduled_at::date = DATE '2026-10-20'
+[  2.565s]   Admin ->    | appointment_id, patient_id, scheduled_at = (400008, 1, '2026-10-20 10:00:00+01')
+
+==============================================================================
+SCENARIO 7  DEADLOCK from opposite lock order, and the fix
+==============================================================================
+[  2.574s] Session Admin | UPDATE drug SET stock_qty = 100 WHERE name = 'Demo Coartem'
+[  2.576s]   Admin ->    | UPDATE 1
+[  2.576s] Session Admin | UPDATE drug SET stock_qty = 50  WHERE name = 'Demo Ceftriaxone'
+[  2.577s]   Admin ->    | UPDATE 1
+[  2.581s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  2.582s]   A ->        | BEGIN
+[  2.582s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  2.582s]   B ->        | BEGIN
+[  2.582s] Session A     | UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Coartem'
+[  2.583s]   A ->        | UPDATE 1
+[  2.583s] Session B     | UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Ceftriaxone'
+[  2.584s]   B ->        | UPDATE 1
+[  2.584s] Session A     | UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Ceftriaxone'
+[  3.184s] Session B     | UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Coartem'
+[  3.585s]   A ->        | ERROR 40P01: ERROR:  deadlock detected
+[  3.585s]   B ->        | UPDATE 1
+[  3.585s] Session A     | ROLLBACK
+[  3.585s]   A ->        | ROLLBACK
+[  3.585s] Session B     | ROLLBACK
+[  3.585s]   B ->        | ROLLBACK
+[  3.585s] Note          | Fix: sp_dispense_prescription locks drugs in ascending drug_id order. Two prescriptions listing the same
+[  3.585s] Note          | drugs in opposite order now queue behind each other instead of deadlocking.
+[  3.585s] Session Admin | INSERT INTO prescription (consultation_id) VALUES (1) RETURNING prescription_id
+[  3.587s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+                       SELECT 342184, drug_id, '1', 'daily', 1, 1 FROM drug WHERE name = 'Demo Coartem'
+[  3.588s]   Admin ->    | INSERT 0 1
+[  3.588s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+                       SELECT 342184, drug_id, '1', 'daily', 1, 1 FROM drug WHERE name = 'Demo Ceftriaxone'
+[  3.589s]   Admin ->    | INSERT 0 1
+[  3.589s] Session Admin | INSERT INTO prescription (consultation_id) VALUES (1) RETURNING prescription_id
+[  3.590s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+                       SELECT 342185, drug_id, '1', 'daily', 1, 1 FROM drug WHERE name = 'Demo Ceftriaxone'
+[  3.590s]   Admin ->    | INSERT 0 1
+[  3.590s] Session Admin | INSERT INTO prescription_item (prescription_id, drug_id, dose, frequency, duration_days, quantity)
+                       SELECT 342185, drug_id, '1', 'daily', 1, 1 FROM drug WHERE name = 'Demo Coartem'
+[  3.591s]   Admin ->    | INSERT 0 1
+[  3.591s] Session A     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  3.591s]   A ->        | BEGIN
+[  3.591s] Session B     | BEGIN ISOLATION LEVEL READ COMMITTED
+[  3.591s]   B ->        | BEGIN
+[  3.591s] Session A     | CALL sp_dispense_prescription(342184, 8)
+[  3.595s]   A ->        | CALL
+[  3.596s] Session B     | CALL sp_dispense_prescription(342185, 8)
+[  4.200s] Monitor       | pg_stat_activity: session_A state=idle in transaction wait=Client/ClientRead blocked_by=[]
+[  4.200s] Monitor       | pg_stat_activity: session_B state=active wait=Lock/transactionid blocked_by=[3675]
+[  4.200s] Session A     | COMMIT
+[  4.201s]   A ->        | COMMIT
+[  4.203s]   B ->        | CALL
+[  4.203s] Session B     | COMMIT
+[  4.204s]   B ->        | COMMIT
+[  4.204s] Session Admin | SELECT name, stock_qty FROM drug WHERE name LIKE 'Demo%' ORDER BY drug_id
+[  4.204s]   Admin ->    | name, stock_qty = ('Demo Coartem', 98); ('Demo Ceftriaxone', 48)
+[  4.208s] Runner        | All scenarios finished

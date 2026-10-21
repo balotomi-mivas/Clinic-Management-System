@@ -1,0 +1,10 @@
+--
+2026-10-16 04:12:13.905 UTC [3675] ERROR:  deadlock detected
+2026-10-16 04:12:13.905 UTC [3675] DETAIL:  Process 3675 waits for ShareLock on transaction 1291; blocked by process 3676.
+	Process 3676 waits for ShareLock on transaction 1290; blocked by process 3675.
+	Process 3675: UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Ceftriaxone'
+	Process 3676: UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Coartem'
+2026-10-16 04:12:13.905 UTC [3675] HINT:  See server log for query details.
+2026-10-16 04:12:13.905 UTC [3675] CONTEXT:  while updating tuple (0,49) in relation "drug"
+2026-10-16 04:12:13.905 UTC [3675] STATEMENT:  UPDATE drug SET stock_qty = stock_qty - 1 WHERE name = 'Demo Ceftriaxone'
+2026-10-16 04:12:14.525 UTC [3675] WARNING:  there is no transaction in progress
