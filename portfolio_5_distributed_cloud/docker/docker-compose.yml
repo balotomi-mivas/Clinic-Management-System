@@ -1,0 +1,51 @@
+# LASUTH Clinic Management System
+# Portfolio 5: four SQL Server 2022 instances on one laptop
+#   sql1     primary replica of the availability group   localhost,14331
+#   sql2     secondary replica                           localhost,14332
+#   sharda   shard holding patients 1 to 30001           localhost,14333
+#   shardb   shard holding patients above 30001          localhost,14334
+# The sa password is read from the .env file next to this file (see .env.example).
+x-sql: &sql
+  image: mcr.microsoft.com/mssql/server:2022-latest
+  user: root                      # lets the containers write certificates to the shared volume
+  volumes:
+    - shared:/shared
+  networks: [lasuth]
+
+x-env: &env
+  ACCEPT_EULA: "Y"
+  MSSQL_PID: "Developer"
+  MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
+  MSSQL_AGENT_ENABLED: "true"
+
+services:
+  sql1:
+    <<: *sql
+    hostname: sql1
+    container_name: sql1
+    environment: { <<: *env, MSSQL_ENABLE_HADR: "1" }
+    ports: ["14331:1433"]
+  sql2:
+    <<: *sql
+    hostname: sql2
+    container_name: sql2
+    environment: { <<: *env, MSSQL_ENABLE_HADR: "1" }
+    ports: ["14332:1433"]
+  sharda:
+    <<: *sql
+    hostname: sharda
+    container_name: sharda
+    environment: *env
+    ports: ["14333:1433"]
+  shardb:
+    <<: *sql
+    hostname: shardb
+    container_name: shardb
+    environment: *env
+    ports: ["14334:1433"]
+
+volumes:
+  shared:
+
+networks:
+  lasuth:
