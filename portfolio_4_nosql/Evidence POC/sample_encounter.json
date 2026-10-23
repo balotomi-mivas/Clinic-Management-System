@@ -1,0 +1,40 @@
+{
+  "encounter_id": 11702,
+  "patient_id": 2067,
+  "hospital_no": "LASUTH/2021/002066",
+  "visit_date": "2026-10-06T15:15:00+01",
+  "reason": "Diabetes review",
+  "doctor": {
+    "staff_id": 114,
+    "name": "Emeka Jegede",
+    "specialty": "Paediatrics",
+    "department": "Surgery"
+  },
+  "vitals": {
+    "temperature_c": 38.3,
+    "bp": "125/78",
+    "weight_kg": 51.8
+  },
+  "diagnoses": [
+    {
+      "code": "J06.9",
+      "description": "Acute upper respiratory infection, unspecified",
+      "primary": true
+    }
+  ],
+  "prescriptions": [
+    {
+      "drug": "Amlodipine 5 mg",
+      "dose": "1 unit",
+      "frequency": "twice daily",
+      "duration_days": 5,
+      "quantity": 10,
+      "status": "DISPENSED"
+    }
+  ],
+  "lab_results": [],
+  "bill": {
+    "total": 6500.0,
+    "paid": 6500.0
+  }
+}
