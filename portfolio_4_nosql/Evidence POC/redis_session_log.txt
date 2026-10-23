@@ -1,0 +1,100 @@
+LASUTH Portfolio 4: Redis key value session, 2026-10-22T04:23:45+00:00
+Server: redis_version:7.0.15
+
+=== 1. GOPD waiting queue: score = arrival time (epoch seconds), so the queue orders itself ===
+redis> ZADD queue:gopd:2026-10-22 1792130400 LASUTH/2021/002066
+(integer) 1
+
+redis> ZADD queue:gopd:2026-10-22 1792130460 LASUTH/2015/025017
+(integer) 1
+
+redis> ZADD queue:gopd:2026-10-22 1792130520 LASUTH/2026/000001
+(integer) 1
+
+redis> ZADD queue:gopd:2026-10-22 1792130580 LASUTH/2024/041999
+(integer) 1
+
+# A patient asks how many people are ahead of them (0 based rank)
+redis> ZRANK queue:gopd:2026-10-22 LASUTH/2026/000001
+(integer) 2
+
+# Display board shows the whole queue in arrival order
+redis> ZRANGE queue:gopd:2026-10-22 0 -1 WITHSCORES
+1) "LASUTH/2021/002066"
+2) "1792130400"
+3) "LASUTH/2015/025017"
+4) "1792130460"
+5) "LASUTH/2026/000001"
+6) "1792130520"
+7) "LASUTH/2024/041999"
+8) "1792130580"
+
+# Doctor presses Call Next: remove and return the earliest arrival in one atomic step,
+# so two consulting rooms can never call the same patient
+redis> ZPOPMIN queue:gopd:2026-10-22
+1) "LASUTH/2021/002066"
+2) "1792130400"
+
+redis> ZCARD queue:gopd:2026-10-22
+(integer) 3
+
+# The queue disappears by itself at midnight
+redis> EXPIREAT queue:gopd:2026-10-22 1792191600
+(integer) 1
+
+redis> TTL queue:gopd:2026-10-22
+(integer) 66974
+
+=== 2. Patient summary card cache: filled from PostgreSQL on first read, kept 15 minutes ===
+redis> HSET card:LASUTH/2021/002066 name Sade Kalu genotype SS blood_group A+ allergies none recorded last_visit 2026-10-06 last_diagnosis Acute upper respiratory infection, unspecified
+(integer) 6
+
+redis> EXPIRE card:LASUTH/2021/002066 900
+(integer) 1
+
+redis> HGETALL card:LASUTH/2021/002066
+ 1) "name"
+ 2) "Sade Kalu"
+ 3) "genotype"
+ 4) "SS"
+ 5) "blood_group"
+ 6) "A+"
+ 7) "allergies"
+ 8) "none recorded"
+ 9) "last_visit"
+10) "2026-10-06"
+11) "last_diagnosis"
+12) "Acute upper respiratory infection, unspecified"
+
+redis> TTL card:LASUTH/2021/002066
+(integer) 900
+
+# When a doctor records a new diagnosis the application deletes the card,
+# so the next read comes fresh from PostgreSQL (cache aside invalidation)
+redis> DEL card:LASUTH/2021/002066
+(integer) 1
+
+redis> EXISTS card:LASUTH/2021/002066
+(integer) 0
+
+=== 3. Live bed board for the Children Emergency Ward ===
+redis> HSET beds:children_emergency total 24 occupied 21
+(integer) 2
+
+# Two admissions arrive from two terminals; HINCRBY is atomic, so no lost update
+redis> HINCRBY beds:children_emergency occupied 1
+(integer) 22
+
+redis> HINCRBY beds:children_emergency occupied 1
+(integer) 23
+
+# A discharge
+redis> HINCRBY beds:children_emergency occupied -1
+(integer) 22
+
+redis> HMGET beds:children_emergency total occupied
+1) "24"
+2) "22"
+
+=== 4. Latency of the queue read, 2,000 calls ===
+ZRANGE queue:gopd:2026-10-22 0 -1: 124999.99 requests per second, p50=0.023 msec

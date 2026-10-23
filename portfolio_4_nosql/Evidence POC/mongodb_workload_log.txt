@@ -1,0 +1,38 @@
+LASUTH Portfolio 4: relational to document migration and workload
+Run at 2026-10-22T04:23:00
+Document store: mongomock 4.3.0 (pymongo API emulator)
+
+[1] Extracted 5,000 patients and 28,318 encounters from PostgreSQL in 1.24 s
+[2] Validated 33,318 documents against schema/*.json: 0 failures (2.60 s)
+    Negative test, an encounter with no diagnosis and an impossible temperature:
+    rejected:
+      diagnoses: [] should be non-empty
+      vitals/temperature_c: 52.0 is greater than the maximum of 45
+[3] Loaded into collections patients (5,000) and encounters (28,318) in 1.83 s
+    Encounter BSON size: median 778 bytes, max 2,845 bytes (limit 16,777,216)
+    Patient BSON size:   median 1,047 bytes, max 1,192 bytes
+
+[M1] Folder retrieval for LASUTH/2021/002066: one query, no joins
+    db.encounters.find({hospital_no: 'LASUTH/2021/002066'}).sort({visit_date: -1})  -> 16 documents
+    Document answer: 16
+    SQL answer:      16
+    MATCH
+
+[M2] Aggregation pipeline: malaria cases per month in 2026 (B50.9 and B54), these 5,000 patients
+    [{"$match": {"visit_date": {"$gte": "2026-01-01", "$lt": "2027-01-01"}}}, {"$unwind": "$diagnoses"}, {"$match": {"diagnoses.code": {"$in": ["B50.9", "B54"]}}}, {"$group": {"_id": {"$substr": ["$visit_date", 0, 7]}, "cases": {"$sum": 1}}}, {"$sort": {"_id": 1}}]
+    Document answer: [('2026-01', 338), ('2026-02', 329), ('2026-03', 373), ('2026-04', 351), ('2026-05', 366), ('2026-06', 319), ('2026-07', 348), ('2026-08', 368), ('2026-09', 337), ('2026-10', 154)]
+    SQL answer:      [('2026-01', 338), ('2026-02', 329), ('2026-03', 373), ('2026-04', 351), ('2026-05', 366), ('2026-06', 319), ('2026-07', 348), ('2026-08', 368), ('2026-09', 337), ('2026-10', 154)]
+    MATCH
+
+[M3] Lab worklist: outstanding requests across embedded arrays
+    Document answer: 319
+    SQL answer:      319
+    MATCH
+
+[M4] Lab scientist reports a result: one atomic update inside one document (positional $ operator)
+    update_one matched=1 modified=1; request 94 is now REPORTED
+
+[M5] New visit: insert encounter and keep only the last five summaries on the patient (subset pattern)
+    recent_encounters before: 5, after: 5, newest is now encounter 999999
+
+All checks finished.
