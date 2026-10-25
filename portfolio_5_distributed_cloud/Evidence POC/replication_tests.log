@@ -1,0 +1,39 @@
+
+>>> 1. Roles: the primary is not in recovery, the standby is
+primary  port 5432  in_recovery=false
+standby  port 5433  in_recovery=true
+
+>>> 2. Replication status seen from the primary
+ application_name |   state   | sync_state |  sent_lsn  | replay_lsn | bytes_behind 
+------------------+-----------+------------+------------+------------+--------------
+ lasuth_standby_1 | streaming | async      | 0/43000060 | 0/43000000 |           96
+(1 row)
+
+    slot_name     | slot_type | active | restart_lsn 
+------------------+-----------+--------+-------------
+ lasuth_standby_1 | physical  | t      | 0/43000000
+(1 row)
+
+
+>>> 3. A patient registered on the primary appears on the standby
+primary inserted LASUTH/2026/700001 at 2026-10-16 05:37:45.902147+01
+INSERT 0 1
+standby sees the row after poll 1 at 2026-10-16 05:37:45.956939+01
+ pg_last_wal_receive_lsn | pg_last_wal_replay_lsn |  replay_delay   
+-------------------------+------------------------+-----------------
+ 0/43009CE0              | 0/43009CE0             | 00:00:00.076537
+(1 row)
+
+
+>>> 4. The standby is read only: writes are refused
+ERROR:  cannot execute INSERT in a read-only transaction
+
+>>> 5. Reporting load can be moved to the standby: the monthly report runs there
+   month    | diagnoses 
+------------+-----------
+ 2026-07-01 |     17049
+ 2026-08-01 |     16921
+ 2026-09-01 |     16599
+ 2026-10-01 |      8220
+(4 rows)
+

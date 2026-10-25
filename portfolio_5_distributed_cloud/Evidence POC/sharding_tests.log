@@ -1,0 +1,94 @@
+>>> 1. Rows per shard, counted through the coordinator
+         shard          | encounters | patients 
+------------------------+------------+----------
+ dist.encounter_shard_a |     171600 |    29910
+ dist.encounter_shard_b |     170577 |    29861
+(2 rows)
+
+>>> 2. No patient is split across shards
+ patients_on_both_shards 
+-------------------------
+                       0
+(1 row)
+
+>>> 3. Folder lookup for one patient: partition pruning sends the query to ONE shard only
+                                                         QUERY PLAN                                                          
+-----------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: encounter.encounter_id, encounter.visit_date, encounter.primary_icd10
+   Sort Key: encounter.visit_date DESC
+   ->  Foreign Scan on dist.encounter_shard_a encounter
+         Output: encounter.encounter_id, encounter.visit_date, encounter.primary_icd10
+         Remote SQL: SELECT encounter_id, visit_date, primary_icd10 FROM clinic_shard.encounter WHERE ((patient_id = 25018))
+(6 rows)
+
+ encounter_id |       visit_date       | primary_icd10 
+--------------+------------------------+---------------
+       142039 | 2026-08-08 14:45:00+01 | J18.9
+       142043 | 2026-07-18 12:00:00+01 | B54
+       142034 | 2026-06-21 15:30:00+01 | D57.1
+       142031 | 2026-06-12 13:30:00+01 | J06.9
+       142044 | 2026-06-11 12:30:00+01 | J18.9
+(5 rows)
+
+>>> 4a. Hospital wide report: both shards are read at the same time (Async Append)
+        Grouping is not on the shard key, so PostgreSQL 16 finishes the count on the coordinator.
+SET
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ HashAggregate
+   Output: encounter.primary_icd10, count(*)
+   Group Key: encounter.primary_icd10
+   ->  Append
+         ->  Async Foreign Scan on dist.encounter_shard_a encounter_1
+               Output: encounter_1.primary_icd10
+               Remote SQL: SELECT primary_icd10 FROM clinic_shard.encounter
+         ->  Async Foreign Scan on dist.encounter_shard_b encounter_2
+               Output: encounter_2.primary_icd10
+               Remote SQL: SELECT primary_icd10 FROM clinic_shard.encounter
+(10 rows)
+
+Timing is on.
+ primary_icd10 | cases 
+---------------+-------
+ B50.9         | 63741
+ J06.9         | 42894
+ I10           | 42585
+ N39.0         | 21601
+ D64.9         | 21584
+(5 rows)
+
+Time: 128.597 ms
+Timing is off.
+>>> 4b. Grouping BY the shard key: the whole aggregation is pushed down and runs on each shard
+SET
+                                                QUERY PLAN                                                 
+-----------------------------------------------------------------------------------------------------------
+ Append
+   ->  Async Foreign Scan
+         Output: encounter.patient_id, (count(*)), (sum(encounter.total_billed))
+         Relations: Aggregate on (dist.encounter_shard_a encounter)
+         Remote SQL: SELECT patient_id, count(*), sum(total_billed) FROM clinic_shard.encounter GROUP BY 1
+   ->  Async Foreign Scan
+         Output: encounter_1.patient_id, (count(*)), (sum(encounter_1.total_billed))
+         Relations: Aggregate on (dist.encounter_shard_b encounter_1)
+         Remote SQL: SELECT patient_id, count(*), sum(total_billed) FROM clinic_shard.encounter GROUP BY 1
+(9 rows)
+
+ patient_id | visits |  billed   
+------------+--------+-----------
+      37673 |     19 | 137000.00
+      42000 |     19 | 137000.00
+      30566 |     18 | 132000.00
+(3 rows)
+
+>>> 5. A new visit is routed by the coordinator to the correct shard
+       stored_on        
+------------------------
+ dist.encounter_shard_a
+(1 row)
+
+INSERT 0 1
+DELETE 1
+Direct count on the shard server at port 5434: 171600
+Direct count on the shard server at port 5435: 170577

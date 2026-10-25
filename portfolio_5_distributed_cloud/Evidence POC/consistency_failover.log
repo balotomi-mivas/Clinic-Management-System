@@ -1,0 +1,79 @@
+
+>>> 1. Asynchronous replication (default): 200 separate commits
+async: .4991 ms per commit
+
+>>> 2. Switch to synchronous replication: a commit returns only after the standby has the WAL
+ application_name | sync_state 
+------------------+------------
+ lasuth_standby_1 | sync
+(1 row)
+
+sync:  .5828 ms per commit
+
+>>> 3. The standby fails while replication is synchronous
+server stopped
+ connected_standbys 
+--------------------
+                  0
+(1 row)
+
+A records officer registers a patient on the primary...
+ pid | state  | wait_event_type | wait_event |   waiting_for   |                     query                     
+-----+--------+-----------------+------------+-----------------+-----------------------------------------------
+ 647 | active | IPC             | SyncRep    | 00:00:03.004765 | insert into clinic.patient (hospital_no, firs
+(1 row)
+
+...the commit is stuck waiting for a standby that is not there. Operator cancels the wait:
+t
+WARNING:  canceling wait for synchronous replication due to user request
+DETAIL:  The transaction has already committed locally, but might not have been replicated to the standby.
+INSERT 0 1
+    hospital_no     
+--------------------
+ LASUTH/2026/700003
+(1 row)
+
+The row is visible: it committed locally but was never confirmed on a second copy.
+Availability option: drop to asynchronous until the standby returns.
+
+>>> 4. Standby restarts and catches up from the replication slot
+server started
+ application_name |   state   | sync_state | bytes_behind 
+------------------+-----------+------------+--------------
+ lasuth_standby_1 | streaming | async      |            0
+(1 row)
+
+    hospital_no     
+--------------------
+ LASUTH/2026/700003
+(1 row)
+
+
+>>> 5. Failover: the primary crashes
+last row written on old primary: LASUTH/2026/700004
+INSERT 0 1
+server stopped
+psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+server promoted
+promotion took .107 s
+port 5433 in_recovery=false, timeline 1
+    hospital_no     |  last_name   
+--------------------+--------------
+ LASUTH/2026/700001 | Test
+ LASUTH/2026/700003 | Wait
+ LASUTH/2026/700004 | Before Crash
+(3 rows)
+
+new primary accepted write: LASUTH/2026/700005
+INSERT 0 1
+The sharded tables are reachable from the new primary as well:
+         shard          | count  
+------------------------+--------
+ dist.encounter_shard_a | 171600
+ dist.encounter_shard_b | 170577
+(2 rows)
+
+
+>>> Addendum, run separately after the script: the control file reports the old timeline until the
+>>> first checkpoint on the promoted server. After CHECKPOINT:
+port 5433 in_recovery=false, now on timeline 2
